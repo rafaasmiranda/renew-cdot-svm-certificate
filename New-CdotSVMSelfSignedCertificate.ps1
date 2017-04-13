@@ -1,4 +1,4 @@
-<#
+﻿<#
 TODO: Help
 #>
 
@@ -7,8 +7,7 @@ param (
     [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Medium')]
     [Parameter(Mandatory=$true, ValueFromPipeline=$true, ValueFromPipelineByPropertyName=$true)]
     [Alias('SVM')]
-    [string[]]$Vserver,
-    [bool]$ExpiredOnly = $true
+    [string[]]$Vserver
 )
 
 Begin {
@@ -46,6 +45,8 @@ Begin {
 }
 
 Process {
+    # Date to compare with the certificate's date
+    $ValidationDate = Get-Date
 
 }
 
