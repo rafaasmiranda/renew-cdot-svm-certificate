@@ -63,9 +63,9 @@ Process {
     $ValidationDate = Get-Date
     foreach ($VserverItem in $Vserver) {
         # Get the certificate for the specified Vserver
-        $certificate = Get-NcSecurityCertificate -Vserver $VserverItem
+        $CurrentCertificate = Get-NcSecurityCertificate -Vserver $VserverItem -Type "server"
         # Check if the certificate is expired
-        if ($certificate.ExpirationDateDT -gt $ValidationDate) {
+        if ($CurrentCertificate.ExpirationDateDT -gt $ValidationDate) {
             Write-Host "The certificate for $VserverItem is not expired. Nothing to do. :|"
         }
         else {
@@ -84,6 +84,30 @@ Process {
                 OrganizationUnit = $OrganizationUnit
                 EmailAddress = $EmailAddress
                 Size = $Size
+            }
+            # End NewCertParameters
+
+            if ($PSCmdlet.ShouldProcess($VserverItem,"Creating new certificate")) {
+                try {
+                    Write-Debug "Removing expired certificate $($CurrentCertificate.CommonName):$($CurrentCertificate.SerialNumber)"
+                    Write-Verbose "Removing expired certificate on $VserverItem"
+
+                    Remove-NcSecurityCertificate -Query $CurrentCertificate -ErrorAction Stop
+
+                    Write-Debug "Creating a new self-signed ceritificate for $VserverItem"
+                    Write-Verbose "Creating a new self-signed ceritificate for $VserverItem"
+
+                    $NewCertificate = New-NcSecurityCertificate @NewCertParameters
+
+                    Write-Debug "Enabling the new certificate for ssl authentication os vserver $VserverItem"
+                    Write-Verbose "Enabling the new certificate for ssl authentication os vserver $VserverItem"
+
+                    Set-NcSecuritySsl -Vserver $VserverItem -CertificateSerialNumber $NewCertificate.SerialNumber -CertificateAuthority $NewCertificate.CertificateAuthority -CommonName $NewCertificate.CommonName -EnableServerAuthentication $true -EnableClientAuthentication $true
+                }
+                catch {
+                    Write-Error -Message "Error while creating new self-signed certificate for $VserverItem." -Exception $Error[0].Exception
+                    continue
+                }
             }
         }
     }
