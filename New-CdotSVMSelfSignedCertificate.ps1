@@ -33,7 +33,7 @@ Begin {
     else {
         Write-Debug "Importing DataONTAP module."
         Import-Module DataONTAP
-    }
+    } # End Module verification
 
     Write-Debug "Checking if it is needed to connect to a cluster"
     
@@ -55,8 +55,8 @@ Begin {
     }
     else {
         Write-Verbose "Connected to Cluster $($Global:CurrentNcController.Name)"
-    }
-}
+    } # End cluster connection validation
+} # End Begin Block
 
 Process {
     # Date to compare with the certificate's date
@@ -107,12 +107,12 @@ Process {
                 catch {
                     Write-Error -Message "Error while creating new self-signed certificate for $VserverItem." -Exception $Error[0].Exception
                     continue
-                }
-            }
-        }
-    }
-}
+                } # End try-catch certificate creation
+            } # End If ShouldContinue block
+        } # End Else  Create New Certificate block
+    } # End foreach vserver block
+} # End Process block
 
 End {
 
-}
+} # End End block
