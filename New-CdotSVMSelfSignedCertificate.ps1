@@ -1,9 +1,64 @@
-﻿#Requires -Version 3.0
-<#
-TODO: Help
+﻿<#
+.SYNOPSIS
+    Script to renew expired SSL self-signed certificates on NetApp Clustered DataONTAP Vservers
+
+.DESCRIPTION
+    The script takes a list of Vservers and creates new self-signed certificates for server authentication, therefore providing a quick way to clear the warnings generated in autosupport.
+
+.PARAMETER Vserver
+    List of Vservers which will have the certificates renewed
+
+.PARAMETER EmailAddress
+    E-mail address to be used in the certificate
+
+.PARAMETER Country
+    Two-letter country code to be used in the certificate. If it is not provided, the code will be acquired from the .Net Class System.Globalization.RegionInfo
+.PARAMETER ExpireDays
+    Number of days that will define the date of the certificate expiration. The minimum value is 30 days and the maximum is 3650
+.PARAMETER HashFunction
+    The type of function to be used in the certificate. The allowed values are sha1, sha256 and md5.
+.PARAMETER Size
+    Size of the requested certificate in bits. The default value is 2048. The allowed values are 512, 1024, 1536 and 2048.
+.PARAMETER State
+    The state where the vserver is located.
+.PARAMETER Organization
+    The name of the organization to be used on the certificate. Usually it is the company name.
+.PARAMETER OrganizationUnit
+    The name of the organization unit to be used on the certificate. Usually it is the name of the department that manages the equipment.
+.PARAMETER Locality
+    The general locality to be used in the certificate.
+.EXAMPLE
+    To renew a certificate for a single Vserver
+    New-CdotSVMSelfSignedCertificate.ps1 -Vserver vs01 -EmailAddress storage@example.com -Country US
+.EXAMPLE
+    To renew a certificate for a list of Vservers specifiyng 3650 days until the certificate expiration
+    New-CdotSVMSelfSignedCertificate.ps1 -Vserver vs01, vs02 -EmailAddress storage@example.com -Country US -ExpirationDays 3650
+.EXAMPLE
+    To renew the certificates of all vservers in a Cluster, unless the type is system (it does not use a certificate).
+    Get-NcVserver | ? {$PSItem.VserverType -ne "system"} | New-CdotSVMSelfSignedCertificate.ps1 -EmailAddress storage@example.com -Country US -Organization Contoso
+    
+    Notice that there is no need to specify the Vserver parameter, because the name of the vservers are being passed via pipeline.
+
+.INPUTS
+System.String[]
+
+.OUTPUTS
+None. The script does not (should not) generate output.
+.COMPONENT
+NetApp PowerShell Toolkit
+.LINK
+https://github.com/rafaasmiranda/renew-cdot-svm-certificate/blob/master/README.md
+.LINK
+GitHub Repository: https://github.com/rafaasmiranda/renew-cdot-svm-certificate
+.LINK    
+NetApp KB about certificates: https://kb.netapp.com/support/s/article/ka31A0000000wJ6QAI/how-to-renew-an-ssl-certificate-in-clustered-data-ontap?t=1492129898764
+.LINK
+Get-NcSecurityCertificate
+.LINK
+New-NcSecurityCertificate
 #>
 
-
+#Requires -Version 3.0
 param (
     [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Medium')]
     [Parameter(Mandatory=$true, ValueFromPipeline=$true, ValueFromPipelineByPropertyName=$true)]
@@ -13,6 +68,7 @@ param (
     [string]$EmailAddress,
     [ValidatePattern("\[a-z]{2}")]
     [string]$Country = ([System.Globalization.RegionInfo]((Get-Culture).Name)).TwoLetterISORegionName,
+    [ValidateRange(30, 3650)]
     [string]$ExpireDays = 365,
     [ValidateSet('sha1', 'sha256', 'md5')]
     [string]$HashFunction = "SHA256",
