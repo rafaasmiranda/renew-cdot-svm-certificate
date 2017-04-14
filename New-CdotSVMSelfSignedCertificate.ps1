@@ -56,6 +56,10 @@ NetApp KB about certificates: https://kb.netapp.com/support/s/article/ka31A00000
 Get-NcSecurityCertificate
 .LINK
 New-NcSecurityCertificate
+.NOTES
+    Author: Rafael Augusto Sena de Miranda
+    GitHub: https://github.com/rafaasmiranda
+    Twitter: @rafaasmiranda
 #>
 
 #Requires -Version 3.0
