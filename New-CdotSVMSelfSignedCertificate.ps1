@@ -1,16 +1,12 @@
 ﻿<#
 .SYNOPSIS
     Script to renew expired SSL self-signed certificates on NetApp Clustered DataONTAP Vservers
-
 .DESCRIPTION
     The script takes a list of Vservers and creates new self-signed certificates for server authentication, therefore providing a quick way to clear the warnings generated in autosupport.
-
 .PARAMETER Vserver
     List of Vservers which will have the certificates renewed
-
 .PARAMETER EmailAddress
     E-mail address to be used in the certificate
-
 .PARAMETER Country
     Two-letter country code to be used in the certificate. If it is not provided, the code will be acquired from the .Net Class System.Globalization.RegionInfo
 .PARAMETER ExpireDays
@@ -63,14 +59,14 @@ New-NcSecurityCertificate
 #>
 
 #Requires -Version 3.0
+[CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Medium')]
 param (
-    [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Medium')]
     [Parameter(Mandatory=$true, ValueFromPipeline=$true, ValueFromPipelineByPropertyName=$true)]
     [Alias('SVM')]
     [string[]]$Vserver,
     [Parameter(Mandatory=$true)]
     [string]$EmailAddress,
-    [ValidatePattern("\[a-z]{2}")]
+    [ValidatePattern("[a-z]{2}")]
     [string]$Country = ([System.Globalization.RegionInfo]((Get-Culture).Name)).TwoLetterISORegionName,
     [ValidateRange(30, 3650)]
     [string]$ExpireDays = 365,
@@ -122,9 +118,25 @@ Process {
     # Date to compare with the certificate's date
     $ValidationDate = Get-Date
     foreach ($VserverItem in $Vserver) {
+        # Get vserver data
+        $VserverInfo = Get-NcVserver -Name $VserverItem
+        if (!$VserverInfo) {
+            Write-Error -Message "The vserver $VserverItem was not found." -Category ObjectNotFound -TargetObject $VserverItem -RecommendedAction "Ensure the vserver name is correct and try again"
+            continue
+        }
+        elseif ($VserverInfo.VserverType -notmatch '(admin|data|node)') {
+            Write-Warning "Certificate creation is not needed in this type of vserver: $($VserverInfo.VserverType)"
+            continue
+        }
         # Get the certificate for the specified Vserver
         $CurrentCertificate = Get-NcSecurityCertificate -Vserver $VserverItem -Type "server"
+        # Check if a certificate was found
+        if (!$CurrentCertificate) {
+            Write-Warning "No certificate found for vserver $VserverItem"
+            continue
+        }
         # Check if the certificate is expired
+        Write-Debug "$($CurrentCertificate.CommonName). ExpirationDate: $($CurrentCertificate.ExpirationDate). ExpirationDateDT: $($CurrentCertificate.ExpirationDateDT)"
         if ($CurrentCertificate.ExpirationDateDT -gt $ValidationDate) {
             Write-Host "The certificate for $VserverItem is not expired. Nothing to do. :|"
         }
@@ -147,7 +159,7 @@ Process {
             }
             # End NewCertParameters
 
-            if ($PSCmdlet.ShouldProcess($VserverItem,"Creating new certificate")) {
+            if ($PSCmdlet.ShouldProcess($VserverItem, "Creating new certificate")) {
                 try {
                     Write-Debug "Removing expired certificate $($CurrentCertificate.CommonName):$($CurrentCertificate.SerialNumber)"
                     Write-Verbose "Removing expired certificate on $VserverItem"
@@ -162,7 +174,7 @@ Process {
                     Write-Debug "Enabling the new certificate for ssl authentication os vserver $VserverItem"
                     Write-Verbose "Enabling the new certificate for ssl authentication os vserver $VserverItem"
 
-                    Set-NcSecuritySsl -Vserver $VserverItem -CertificateSerialNumber $NewCertificate.SerialNumber -CertificateAuthority $NewCertificate.CertificateAuthority -CommonName $NewCertificate.CommonName -EnableServerAuthentication $true -EnableClientAuthentication $true
+                    Set-NcSecuritySsl -Vserver $VserverItem -CertificateSerialNumber $NewCertificate.SerialNumber -CertificateAuthority $NewCertificate.CertificateAuthority -CommonName $NewCertificate.CommonName -EnableServerAuthentication $true -EnableClientAuthentication $false
                 }
                 catch {
                     Write-Error -Message "Error while creating new self-signed certificate for $VserverItem." -Exception $Error[0].Exception
