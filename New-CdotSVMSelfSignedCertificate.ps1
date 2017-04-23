@@ -128,6 +128,8 @@ Process {
             Write-Warning "Certificate creation is not needed in this type of vserver: $($VserverInfo.VserverType)"
             continue
         }
+        #TODO: A ideia é pegar os certificados e ver se há pelo menos 1 ainda válido. Verificar se está atribuído ao serviço ssl
+        # Se não estiver, atribuir. Perguntar se pode remover os outros. Remover se um parâmetro for especificado para isso.
         # Get the certificate for the specified Vserver
         $CurrentCertificate = Get-NcSecurityCertificate -Vserver $VserverItem -Type "server"
         # Check if a certificate was found
