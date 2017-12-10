@@ -23,6 +23,8 @@
     The name of the organization unit to be used on the certificate. Usually it is the name of the department that manages the equipment.
 .PARAMETER Locality
     The general locality to be used in the certificate.
+.PARAMETER DNSSuffix
+    The dns suffix to be used in the certificate's common name.
 .EXAMPLE
     To renew a certificate for a single Vserver
     New-CdotSVMSelfSignedCertificate.ps1 -Vserver vs01 -EmailAddress storage@example.com -Country US
@@ -66,7 +68,7 @@ param (
     [string[]]$Vserver,
     [Parameter(Mandatory=$true)]
     [string]$EmailAddress,
-    [ValidatePattern("[a-z]{2}")]
+    [ValidatePattern("[A-Z]{2}")]
     [string]$Country = ([System.Globalization.RegionInfo]((Get-Culture).Name)).TwoLetterISORegionName,
     [ValidateRange(30, 3650)]
     [string]$ExpireDays = 365,
@@ -77,7 +79,9 @@ param (
     [string]$State,
     [string]$Organization,
     [string]$OrganizationUnit,
-    [string]$Locality
+    [string]$Locality,
+    [ValidatePattern('^([\w\-\.]+)$')]
+    [string]$DNSSuffix
 )
 
 Begin {
@@ -91,7 +95,7 @@ Begin {
         Import-Module DataONTAP
     } # End Module verification
 
-    Write-Debug "Checking if it is needed to connect to a cluster"
+    Write-Debug "Checking if there is a connection to a Cluster"
     
     if (!$Global:CurrentNcController) {
         try {
@@ -112,6 +116,9 @@ Begin {
     else {
         Write-Verbose "Connected to Cluster $($Global:CurrentNcController.Name)"
     } # End cluster connection validation
+
+    #TODO: Função para renovar o certificado.
+
 } # End Begin Block
 
 Process {
@@ -123,50 +130,44 @@ Process {
         if (!$VserverInfo) {
             Write-Error -Message "The vserver $VserverItem was not found." -Category ObjectNotFound -TargetObject $VserverItem -RecommendedAction "Ensure the vserver name is correct and try again"
             continue
-        }
-        elseif ($VserverInfo.VserverType -notmatch '(admin|data|node)') {
-            Write-Warning "Certificate creation is not needed in this type of vserver: $($VserverInfo.VserverType)"
+        } elseif ($VserverInfo.VserverType -notmatch '(admin|data|node)') {
+            Write-Warning "Certificate creation is not needed for vserver $($VserverInfo.Vserver): type is $($VserverInfo.VserverType)"
             continue
         }
-        #TODO: A ideia é pegar os certificados e ver se há pelo menos 1 ainda válido. Verificar se está atribuído ao serviço ssl
-        # Se não estiver, atribuir. Perguntar se pode remover os outros. Remover se um parâmetro for especificado para isso.
-        # Get the certificate for the specified Vserver
-        $CurrentCertificate = Get-NcSecurityCertificate -Vserver $VserverItem -Type "server"
-        # Check if a certificate was found
-        if (!$CurrentCertificate) {
-            Write-Warning "No certificate found for vserver $VserverItem"
-            continue
-        }
+        
+        # Get the current SSL certificate in use for the vserver
+        $VserverSSLInfo = Get-NcSecuritySsl -Vserver $VserverInfo.Vserver
+        $VserverCurrentSSLCertificate = Get-NcSecurityCertificate -SerialNumber $VserverSSLInfo.CertificateSerialNumber
+
         # Check if the certificate is expired
-        Write-Debug "$($CurrentCertificate.CommonName). ExpirationDate: $($CurrentCertificate.ExpirationDate). ExpirationDateDT: $($CurrentCertificate.ExpirationDateDT)"
-        if ($CurrentCertificate.ExpirationDateDT -gt $ValidationDate) {
-            Write-Host "The certificate for $VserverItem is not expired. Nothing to do. :|"
-        }
-        else {
+        Write-Debug "$($VserverCurrentSSLCertificate.CommonName). ExpirationDate: $($VserverCurrentSSLCertificate.ExpirationDate). ExpirationDateDT: $($VserverCurrentSSLCertificate.ExpirationDateDT)"
+        if ($VserverCurrentSSLCertificate.ExpirationDateDT -gt $ValidationDate) {
+            Write-Host "The certificate for $VserverItem is not expired. Nothing to do. :)" -ForegroundColor Green
+        } else {
             # Building hashtable parameters for New-NcSecurityCertificate
             $NewCertParameters = @{
-                CommonName = $VserverItem
+                CommonName           = if($DNSSuffix) {$VserverInfo.Vserver + "." + $DNSSuffix} else {$VserverInfo.Vserver}
                 CertificateAuthority = $Global:CurrentNcController.Name
-                Type = 'server'
-                Vserver = $VserverItem
-                Country = $Country
-                ExpireDays = $ExpireDays
-                HashFunction = $HashFunction
-                State = $State
-                Locality = $Locality
-                Organization = $Organization
-                OrganizationUnit = $OrganizationUnit
-                EmailAddress = $EmailAddress
-                Size = $Size
+                Type                 = 'server'
+                Vserver              = $VserverInfo.Vserver
+                Country              = $Country.ToUpper()
+                ExpireDays           = $ExpireDays
+                HashFunction         = $HashFunction
+                State                = $State
+                Locality             = $Locality
+                Organization         = $Organization
+                OrganizationUnit     = $OrganizationUnit
+                EmailAddress         = $EmailAddress
+                Size                 = $Size
             }
             # End NewCertParameters
 
             if ($PSCmdlet.ShouldProcess($VserverItem, "Creating new certificate")) {
                 try {
-                    Write-Debug "Removing expired certificate $($CurrentCertificate.CommonName):$($CurrentCertificate.SerialNumber)"
+                    Write-Debug "Removing expired certificate $($VserverCurrentSSLCertificate.CommonName):$($VserverCurrentSSLCertificate.SerialNumber)"
                     Write-Verbose "Removing expired certificate on $VserverItem"
 
-                    Remove-NcSecurityCertificate -Query $CurrentCertificate -ErrorAction Stop
+                    Remove-NcSecurityCertificate -CommonName $VserverCurrentSSLCertificate.CommonName -Type $VserverCurrentSSLCertificate.Type -SerialNumber $VserverCurrentSSLCertificate.SerialNumber -Vserver $VserverCurrentSSLCertificate.Vserver
 
                     Write-Debug "Creating a new self-signed ceritificate for $VserverItem"
                     Write-Verbose "Creating a new self-signed ceritificate for $VserverItem"
@@ -177,8 +178,7 @@ Process {
                     Write-Verbose "Enabling the new certificate for ssl authentication os vserver $VserverItem"
 
                     Set-NcSecuritySsl -Vserver $VserverItem -CertificateSerialNumber $NewCertificate.SerialNumber -CertificateAuthority $NewCertificate.CertificateAuthority -CommonName $NewCertificate.CommonName -EnableServerAuthentication $true -EnableClientAuthentication $false
-                }
-                catch {
+                } catch {
                     Write-Error -Message "Error while creating new self-signed certificate for $VserverItem." -Exception $Error[0].Exception
                     continue
                 } # End try-catch certificate creation
