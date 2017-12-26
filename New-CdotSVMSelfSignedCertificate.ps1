@@ -164,15 +164,14 @@ Process {
 
             if ($PSCmdlet.ShouldProcess($VserverItem, "Creating new certificate")) {
                 try {
+                    Write-Verbose "Creating a new self-signed ceritificate for $VserverItem"
+                    Write-Debug $NewCertParameters
+                    $NewCertificate = New-NcSecurityCertificate @NewCertParameters
+
                     Write-Debug "Removing expired certificate $($VserverCurrentSSLCertificate.CommonName):$($VserverCurrentSSLCertificate.SerialNumber)"
                     Write-Verbose "Removing expired certificate on $VserverItem"
 
-                    Remove-NcSecurityCertificate -CommonName $VserverCurrentSSLCertificate.CommonName -Type $VserverCurrentSSLCertificate.Type -SerialNumber $VserverCurrentSSLCertificate.SerialNumber -Vserver $VserverCurrentSSLCertificate.Vserver
-
-                    Write-Debug "Creating a new self-signed ceritificate for $VserverItem"
-                    Write-Verbose "Creating a new self-signed ceritificate for $VserverItem"
-
-                    $NewCertificate = New-NcSecurityCertificate @NewCertParameters
+                    Remove-NcSecurityCertificate -CommonName $VserverCurrentSSLCertificate.CommonName -Type $VserverCurrentSSLCertificate.Type -SerialNumber $VserverCurrentSSLCertificate.SerialNumber -Vserver $VserverCurrentSSLCertificate.Vserver -CertificateAuthority $VserverCurrentSSLCertificate.CertificateAuthority
 
                     Write-Debug "Enabling the new certificate for ssl authentication os vserver $VserverItem"
                     Write-Verbose "Enabling the new certificate for ssl authentication os vserver $VserverItem"
